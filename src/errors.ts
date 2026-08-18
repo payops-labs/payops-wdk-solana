@@ -1,0 +1,17 @@
+export type PayOpsWdkErrorCode =
+  | "expired_attempt"
+  | "invalid_attempt"
+  | "invalid_lifetime"
+  | "invalid_payer"
+  | "tampered_payment_url"
+  | "unsupported_asset";
+
+export class PayOpsWdkError extends Error {
+  readonly code: PayOpsWdkErrorCode;
+
+  constructor(code: PayOpsWdkErrorCode, message: string) {
+    super(message);
+    this.name = "PayOpsWdkError";
+    this.code = code;
+  }
+}
