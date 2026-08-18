@@ -1,8 +1,10 @@
 export type PayOpsWdkErrorCode =
   | "expired_attempt"
   | "invalid_attempt"
+  | "invalid_finalization_options"
   | "invalid_lifetime"
   | "invalid_payer"
+  | "invalid_signature"
   | "tampered_payment_url"
   | "unsupported_asset";
 
