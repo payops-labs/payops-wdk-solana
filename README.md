@@ -1,7 +1,7 @@
 # PayOps WDK Solana
 
-Reference integration for signing an exact PayOps Solana USDT payment with
-Tether WDK.
+Reference integration for signing and submitting an exact PayOps Solana USDT
+payment with Tether WDK.
 
 This repository is part of [PayOps Labs](https://github.com/payops-labs). The
 wallet-neutral payment verification and reconciliation system lives in
@@ -9,17 +9,21 @@ wallet-neutral payment verification and reconciliation system lives in
 
 ## What this proves
 
-The compatibility proof takes a public PayOps payment attempt, checks its
-security-sensitive fields, builds the matching SPL Token transaction, adds the
-PayOps invoice reference as a read-only account, and passes the prebuilt message
-to Tether WDK for signing.
+The adapter takes a public PayOps payment attempt, checks its security-sensitive
+fields, builds the matching SPL Token transaction, adds the PayOps invoice
+reference as a read-only account, and passes the prebuilt message to a
+caller-owned Tether WDK account for signing. It then submits the signed
+transaction through a caller-supplied RPC port and checks its status until it is
+finalized, fails, expires, or reaches the configured polling bound.
 
-The automated proof uses an unreachable local RPC endpoint. It signs but never
-broadcasts, so it needs no funded wallet or paid infrastructure.
+The automated workflow uses an unreachable WDK provider and a mocked submission
+port. It signs a real transaction without broadcasting it, so tests need no
+funded wallet or paid infrastructure.
 
 ## Trust boundary
 
 - The caller owns and configures its WDK wallet.
+- The caller owns RPC transport, credentials, retry policy, and submission.
 - This adapter never accepts or reads a mnemonic or private key.
 - PayOps never treats signing or submission as payment proof.
 - PayOps verifies the finalized transfer independently before changing invoice
@@ -46,30 +50,49 @@ Anything outside that contract fails closed.
 import type { PublicPaymentAttempt } from "@payops/sdk";
 import type { WalletAccountSolana } from "@tetherto/wdk-wallet-solana";
 import {
-  buildReferencedUsdtTransaction,
-  parsePayOpsUsdtRequest,
+  submitPayOpsUsdtPayment,
+  type PayOpsSolanaRpc,
 } from "@payops/wdk-solana";
 
-async function signPayOpsPayment(
+type WdkSignedTransaction = Awaited<
+  ReturnType<WalletAccountSolana["signTransaction"]>
+>;
+
+async function submitPayOpsPayment(
   account: WalletAccountSolana,
   attempt: PublicPaymentAttempt,
   expectedRecipient: string,
-  lifetime: { blockhash: string; lastValidBlockHeight: bigint },
+  rpc: PayOpsSolanaRpc<WdkSignedTransaction>,
 ) {
-  const intent = parsePayOpsUsdtRequest(attempt, { expectedRecipient });
-  const payer = await account.getAddress();
-  const transaction = await buildReferencedUsdtTransaction(
-    intent,
-    payer,
-    lifetime,
-  );
-
-  return account.signTransaction(transaction);
+  return submitPayOpsUsdtPayment({
+    account,
+    attempt,
+    expectedRecipient,
+    rpc,
+  });
 }
 ```
 
-The package is not published in PR 1. The example documents the intended adapter
-API while the repository remains a reviewed compatibility proof.
+The injected RPC port provides four operations: obtain a recent blockhash,
+submit the caller-signed transaction, inspect its signature status, and read the
+current block height. This keeps provider SDKs and credentials outside the
+adapter.
+
+Every post-submit result includes the transaction signature:
+
+- `finalized` means the injected RPC observed finalized commitment with no
+  transaction error.
+- `failed` includes the on-chain error reported for the signature.
+- `expired` means the transaction passed its last valid block height before
+  finalization.
+- `submitted` means bounded polling ended at `processed`, `confirmed`, or no
+  observed commitment. The caller can continue checking the returned signature.
+
+These statuses describe wallet submission only. PayOps still verifies the
+finalized transfer and invoice constraints independently before marking an
+invoice paid.
+
+The package remains private while this integration surface is reviewed.
 
 ## Development
 
@@ -86,5 +109,5 @@ signed transaction bytes, or private payment data in this repository.
 ## Current limitations
 
 Tether WDK Solana is pinned to `1.0.0-beta.12` and is itself a beta package.
-This repository does not broadcast transactions, poll payment state, publish an
-npm package, support Token-2022, or claim endorsement by Tether.
+This repository does not own RPC infrastructure, update PayOps invoice state,
+publish an npm package, support Token-2022, or claim endorsement by Tether.
