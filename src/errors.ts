@@ -4,6 +4,8 @@ export type PayOpsWdkErrorCode =
   | "invalid_finalization_options"
   | "invalid_lifetime"
   | "invalid_payer"
+  | "invalid_rpc_config"
+  | "invalid_rpc_response"
   | "invalid_signature"
   | "tampered_payment_url"
   | "unsupported_asset";

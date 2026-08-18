@@ -1,0 +1,12 @@
+{
+  "publicAttemptId": "0191a72c-19e4-7a86-93a9-a7e0dff9db97",
+  "assetSymbol": "USDT",
+  "mint": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  "amountTokens": "12.500001",
+  "amountBaseUnits": "12500001",
+  "paymentUrl": "solana:7Ecwo1uPym3WrdhV7vxkgeBpgpDHFYkGAPs8tD5dBEKf?amount=12.500001&spl-token=Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB&reference=Vote111111111111111111111111111111111111111",
+  "reference": "Vote111111111111111111111111111111111111111",
+  "quoteExpiresAt": "2035-01-01T00:00:00.000Z",
+  "status": "awaiting_payment",
+  "statusUpdatedAt": "2026-08-18T09:59:00.000Z"
+}

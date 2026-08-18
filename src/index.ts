@@ -23,3 +23,8 @@ export {
   buildReferencedUsdtTransaction,
   type BlockhashLifetime,
 } from "./transaction-builder.js";
+export {
+  createWdkSolanaRpc,
+  type CreateWdkSolanaRpcOptions,
+  type WdkSolanaSubmissionAccount,
+} from "./wdk-solana-rpc.js";

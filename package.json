@@ -23,6 +23,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "example": "tsx examples/pay.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
@@ -41,7 +42,8 @@
   "devDependencies": {
     "@types/node": "22.20.1",
     "prettier": "3.9.0",
+    "tsx": "4.23.12",
     "typescript": "5.9.3",
-    "vitest": "4.0.18"
+    "vitest": "4.1.0"
   }
 }
