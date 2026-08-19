@@ -7,6 +7,18 @@ This repository is part of [PayOps Labs](https://github.com/payops-labs). The
 wallet-neutral payment verification and reconciliation system lives in
 [solana-payment-ops](https://github.com/payops-labs/solana-payment-ops).
 
+## Install the beta
+
+The adapter is published as a beta while Tether WDK Solana remains beta and the
+integration contract is intentionally narrow.
+
+```bash
+npm install @payops/wdk-solana@beta
+```
+
+The package is non-custodial. Applications provide and retain control of the WDK
+account, RPC endpoint, trusted recipient, and transaction submission policy.
+
 ## What this proves
 
 The adapter takes a public PayOps payment attempt, checks its security-sensitive
@@ -138,8 +150,6 @@ These statuses describe wallet submission only. PayOps still verifies the
 finalized transfer and invoice constraints independently before marking an
 invoice paid.
 
-The package remains private while this integration surface is reviewed.
-
 ## Development
 
 Requires Node.js 22.18 or newer and pnpm 11.15.
@@ -156,4 +166,11 @@ signed transaction bytes, or private payment data in this repository.
 
 Tether WDK Solana is pinned to `1.0.0-beta.12` and is itself a beta package.
 This repository does not own RPC infrastructure, update PayOps invoice state,
-publish an npm package, support Token-2022, or claim endorsement by Tether.
+support Token-2022, or claim endorsement by Tether.
+
+## Releases
+
+Beta releases are built from reviewed tags by the protected GitHub release
+workflow. The workflow reruns tests, type checks, the production audit, and a
+package-content dry run before publishing to npm with provenance. See
+[RELEASING.md](RELEASING.md) for the operator checklist.

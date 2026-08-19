@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "0 4 18 2,4,6,8,10,12 *"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 1
+    groups:
+      routine-npm-version-updates:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "30 4 18 2,4,6,8,10,12 *"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 1
+    groups:
+      routine-actions-version-updates:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"

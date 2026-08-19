@@ -1,10 +1,25 @@
 {
   "name": "@payops/wdk-solana",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0-beta.1",
   "description": "Reference integration for signing PayOps Solana USDT payments with Tether WDK",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/payops-labs/payops-wdk-solana.git"
+  },
+  "homepage": "https://github.com/payops-labs/payops-wdk-solana#readme",
+  "bugs": {
+    "url": "https://github.com/payops-labs/payops-wdk-solana/issues"
+  },
+  "keywords": [
+    "payments",
+    "payops",
+    "solana",
+    "tether",
+    "usdt",
+    "wdk"
+  ],
   "engines": {
     "node": ">=22.18.0"
   },
@@ -26,6 +41,8 @@
     "example": "tsx examples/pay.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "package:verify": "pnpm build && npm pack --dry-run --json",
+    "release:verify": "pnpm check && pnpm package:verify && pnpm audit --prod",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -45,5 +62,10 @@
     "tsx": "4.23.12",
     "typescript": "5.9.3",
     "vitest": "4.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "beta"
   }
 }
