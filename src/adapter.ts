@@ -70,6 +70,7 @@ export interface SubmittedPayOpsUsdtSubmission {
     PayOpsSolanaConfirmationStatus,
     "finalized"
   > | null;
+  readonly finalizationError?: unknown;
   readonly signature: string;
   readonly status: "submitted";
 }
@@ -122,30 +123,38 @@ export async function submitPayOpsUsdtPayment<TSignedTransaction>(
   }
   const waitBetweenChecks =
     options.finalization?.waitBetweenChecks ?? defaultWait;
+  let confirmationStatus: SubmittedPayOpsUsdtSubmission["confirmationStatus"] =
+    null;
 
   for (let completedStatusChecks = 1; ; completedStatusChecks += 1) {
-    const status = await options.rpc.getSignatureStatus(signature);
-    if (status?.err !== null && status?.err !== undefined) {
-      return { error: status.err, signature, status: "failed" };
-    }
-    if (status?.confirmationStatus === "finalized" && status.err === null) {
-      return { signature, status: "finalized" };
-    }
+    try {
+      const status = await options.rpc.getSignatureStatus(signature);
+      if (status?.err !== null && status?.err !== undefined) {
+        return { error: status.err, signature, status: "failed" };
+      }
+      if (status?.confirmationStatus === "finalized" && status.err === null) {
+        return { signature, status: "finalized" };
+      }
+      confirmationStatus =
+        status?.confirmationStatus === "finalized"
+          ? null
+          : (status?.confirmationStatus ?? null);
 
-    const blockHeight = await options.rpc.getBlockHeight();
-    if (blockHeight > lifetime.lastValidBlockHeight) {
-      return { signature, status: "expired" };
-    }
-    if (completedStatusChecks >= maxStatusChecks) {
+      const blockHeight = await options.rpc.getBlockHeight();
+      if (blockHeight > lifetime.lastValidBlockHeight) {
+        return { signature, status: "expired" };
+      }
+      if (completedStatusChecks >= maxStatusChecks) {
+        return { confirmationStatus, signature, status: "submitted" };
+      }
+      await waitBetweenChecks(completedStatusChecks);
+    } catch (finalizationError) {
       return {
-        confirmationStatus:
-          status?.confirmationStatus === "finalized"
-            ? null
-            : (status?.confirmationStatus ?? null),
+        confirmationStatus,
+        finalizationError,
         signature,
         status: "submitted",
       };
     }
-    await waitBetweenChecks(completedStatusChecks);
   }
 }

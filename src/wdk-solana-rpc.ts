@@ -7,6 +7,9 @@ import { PayOpsWdkError } from "./errors.js";
 type Commitment = "confirmed" | "finalized";
 type JsonObject = Record<string, unknown>;
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
+
 export interface WdkSolanaSubmissionAccount<TSignedTransaction> {
   sendTransaction(transaction: TSignedTransaction): Promise<{
     hash: string;
@@ -18,7 +21,10 @@ export interface CreateWdkSolanaRpcOptions<TSignedTransaction> {
   readonly account: WdkSolanaSubmissionAccount<TSignedTransaction>;
   readonly commitment?: Commitment;
   readonly fetch?: typeof globalThis.fetch;
+  readonly maxResponseBytes?: number;
+  readonly requestTimeoutMs?: number;
   readonly rpcUrl: string;
+  readonly signal?: AbortSignal;
 }
 
 function invalidResponse(message: string): never {
@@ -27,6 +33,23 @@ function invalidResponse(message: string): never {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function positiveSafeInteger(
+  value: number | undefined,
+  fallback: number,
+  field: string,
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new PayOpsWdkError(
+      "invalid_rpc_config",
+      `${field} must be a positive safe integer`,
+    );
+  }
+  return value;
 }
 
 function parseBlockHeight(value: unknown, field: string): bigint {
@@ -89,29 +112,71 @@ export function createWdkSolanaRpc<TSignedTransaction>(
   const rpcUrl = parseRpcUrl(options.rpcUrl);
   const commitment = options.commitment ?? "finalized";
   const fetchImplementation = options.fetch ?? globalThis.fetch;
+  const maxResponseBytes = positiveSafeInteger(
+    options.maxResponseBytes,
+    DEFAULT_MAX_RESPONSE_BYTES,
+    "Maximum RPC response bytes",
+  );
+  const requestTimeoutMs = positiveSafeInteger(
+    options.requestTimeoutMs,
+    DEFAULT_REQUEST_TIMEOUT_MS,
+    "RPC request timeout",
+  );
   let requestId = 0;
 
   async function call(
     method: string,
     params: readonly unknown[],
   ): Promise<unknown> {
-    const response = await fetchImplementation(rpcUrl, {
-      body: JSON.stringify({
-        id: ++requestId,
-        jsonrpc: "2.0",
-        method,
-        params,
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
+    const timeoutSignal = AbortSignal.timeout(requestTimeoutMs);
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, timeoutSignal])
+      : timeoutSignal;
+    let response: Response;
+    try {
+      response = await fetchImplementation(rpcUrl, {
+        body: JSON.stringify({
+          id: ++requestId,
+          jsonrpc: "2.0",
+          method,
+          params,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        redirect: "error",
+        signal,
+      });
+    } catch {
+      throw new PayOpsWdkError(
+        "invalid_rpc_response",
+        "Solana RPC request failed",
+      );
+    }
     if (!response.ok) {
       return invalidResponse(`Solana RPC returned HTTP ${response.status}`);
     }
 
+    const contentLength = response.headers.get("content-length");
+    if (
+      contentLength !== null &&
+      /^\d+$/.test(contentLength) &&
+      Number(contentLength) > maxResponseBytes
+    ) {
+      return invalidResponse("Solana RPC response exceeded the size limit");
+    }
+
+    let responseText: string;
+    try {
+      responseText = await response.text();
+    } catch {
+      return invalidResponse("Solana RPC response body could not be read");
+    }
+    if (new TextEncoder().encode(responseText).byteLength > maxResponseBytes) {
+      return invalidResponse("Solana RPC response exceeded the size limit");
+    }
     let body: unknown;
     try {
-      body = await response.json();
+      body = JSON.parse(responseText) as unknown;
     } catch {
       return invalidResponse("Solana RPC did not return valid JSON");
     }

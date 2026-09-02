@@ -174,6 +174,55 @@ describe("submitPayOpsUsdtPayment", () => {
     });
   });
 
+  it("preserves the signature when status lookup fails after broadcast", async () => {
+    const statusError = new Error("status unavailable");
+    const { options, rpc } = mockOptions(null, 90n);
+    vi.mocked(rpc.getSignatureStatus).mockRejectedValueOnce(statusError);
+
+    await expect(submitPayOpsUsdtPayment(options)).resolves.toEqual({
+      confirmationStatus: null,
+      finalizationError: statusError,
+      signature: SIGNATURE,
+      status: "submitted",
+    });
+  });
+
+  it("preserves the latest status when block-height lookup fails", async () => {
+    const heightError = new Error("height unavailable");
+    const { options, rpc } = mockOptions(
+      { confirmationStatus: "confirmed", err: null },
+      90n,
+    );
+    vi.mocked(rpc.getBlockHeight).mockRejectedValueOnce(heightError);
+
+    await expect(submitPayOpsUsdtPayment(options)).resolves.toEqual({
+      confirmationStatus: "confirmed",
+      finalizationError: heightError,
+      signature: SIGNATURE,
+      status: "submitted",
+    });
+  });
+
+  it("preserves the signature when the polling wait fails", async () => {
+    const waitError = new Error("wait interrupted");
+    const { options } = mockOptions(null, 90n);
+    const waitBetweenChecks = vi.fn(async () => {
+      throw waitError;
+    });
+
+    await expect(
+      submitPayOpsUsdtPayment({
+        ...options,
+        finalization: { maxStatusChecks: 2, waitBetweenChecks },
+      }),
+    ).resolves.toEqual({
+      confirmationStatus: null,
+      finalizationError: waitError,
+      signature: SIGNATURE,
+      status: "submitted",
+    });
+  });
+
   it("rejects invalid polling configuration before wallet or RPC use", async () => {
     const { account, options, rpc } = mockOptions(
       { confirmationStatus: "finalized", err: null },
