@@ -1,19 +1,28 @@
 # WDK Solana RPC Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Preserve a submitted transaction signature when confirmation polling fails and bound every Solana JSON-RPC request.
+**Goal:** Preserve a submitted transaction signature when confirmation polling
+fails and bound every Solana JSON-RPC request.
 
-**Architecture:** Keep the existing submission state union and add optional diagnostics only to the `submitted` branch. Harden the HTTP adapter at its single `call` boundary so timeout, cancellation, redirects, response-size limits, parsing, and transport errors are handled consistently.
+**Architecture:** Keep the existing submission state union and add optional
+diagnostics only to the `submitted` branch. Harden the HTTP adapter at its
+single `call` boundary so timeout, cancellation, redirects, response-size
+limits, parsing, and transport errors are handled consistently.
 
-**Tech Stack:** TypeScript 5.9, Node.js 22, Vitest 4, Fetch and AbortSignal APIs, pnpm 11.
+**Tech Stack:** TypeScript 5.9, Node.js 22, Vitest 4, Fetch and AbortSignal
+APIs, pnpm 11.
 
 ## Global Constraints
 
 - Existing required result fields and status names remain unchanged.
 - Default request timeout is 10,000 milliseconds.
 - Default maximum response size is 1 MiB.
-- On-chain failure, expiration, finalization, and bounded-polling behavior remain unchanged.
+- On-chain failure, expiration, finalization, and bounded-polling behavior
+  remain unchanged.
 - Tests must be written and observed failing before production code changes.
 
 ---
@@ -21,11 +30,14 @@
 ### Task 1: Preserve broadcast identity when finalization infrastructure fails
 
 **Files:**
+
 - Modify: `test/adapter.test.ts`
 - Modify: `src/adapter.ts`
 
 **Interfaces:**
-- Consumes: `PayOpsSolanaRpc<TSignedTransaction>` and `submitPayOpsUsdtPayment(options)`.
+
+- Consumes: `PayOpsSolanaRpc<TSignedTransaction>` and
+  `submitPayOpsUsdtPayment(options)`.
 - Produces: `SubmittedPayOpsUsdtSubmission.finalizationError?: unknown`.
 
 - [ ] **Step 1: Add regression tests for all post-broadcast failure points**
@@ -87,9 +99,11 @@ it("preserves the signature when the polling wait fails", async () => {
 
 Run: `pnpm test -- test/adapter.test.ts`
 
-Expected: the three new cases fail because the current function rejects after broadcast.
+Expected: the three new cases fail because the current function rejects after
+broadcast.
 
-- [ ] **Step 3: Add the optional diagnostic and catch only the finalization phase**
+- [ ] **Step 3: Add the optional diagnostic and catch only the finalization
+      phase**
 
 Add this optional property to `SubmittedPayOpsUsdtSubmission`:
 
@@ -152,29 +166,38 @@ git commit -m "fix: preserve submitted signature on polling errors"
 ### Task 2: Bound and normalize Solana RPC transport behavior
 
 **Files:**
+
 - Modify: `test/wdk-solana-rpc.test.ts`
 - Modify: `src/wdk-solana-rpc.ts`
 
 **Interfaces:**
+
 - Consumes: `CreateWdkSolanaRpcOptions<TSignedTransaction>`.
-- Produces: optional `requestTimeoutMs?: number`, `maxResponseBytes?: number`, and `signal?: AbortSignal`.
+- Produces: optional `requestTimeoutMs?: number`, `maxResponseBytes?: number`,
+  and `signal?: AbortSignal`.
 
 - [ ] **Step 1: Add failing transport tests**
 
 Add tests that:
 
-- inspect the fetch options and require `redirect: "error"` plus an `AbortSignal`;
-- abort a pending request through a caller-owned `AbortController` and expect `PayOpsWdkError.code === "invalid_rpc_response"`;
-- set `requestTimeoutMs: 1` on a pending request and expect the same stable error code;
+- inspect the fetch options and require `redirect: "error"` plus an
+  `AbortSignal`;
+- abort a pending request through a caller-owned `AbortController` and expect
+  `PayOpsWdkError.code === "invalid_rpc_response"`;
+- set `requestTimeoutMs: 1` on a pending request and expect the same stable
+  error code;
 - return `Content-Length: 1048577` and reject before parsing;
-- return an actual UTF-8 body larger than the configured `maxResponseBytes` and reject;
-- reject zero, negative, non-integer, and unsafe timeout/size values as `invalid_rpc_config`.
+- return an actual UTF-8 body larger than the configured `maxResponseBytes` and
+  reject;
+- reject zero, negative, non-integer, and unsafe timeout/size values as
+  `invalid_rpc_config`.
 
 - [ ] **Step 2: Run the focused RPC tests and observe the failures**
 
 Run: `pnpm test -- test/wdk-solana-rpc.test.ts`
 
-Expected: failures show missing option types, missing redirect/signal controls, raw abort rejection, and unbounded responses.
+Expected: failures show missing option types, missing redirect/signal controls,
+raw abort rejection, and unbounded responses.
 
 - [ ] **Step 3: Add validated transport defaults**
 
@@ -195,7 +218,8 @@ export interface CreateWdkSolanaRpcOptions<TSignedTransaction> {
 }
 ```
 
-Validate both numeric options as positive safe integers and throw `PayOpsWdkError("invalid_rpc_config", ...)` before network or wallet use.
+Validate both numeric options as positive safe integers and throw
+`PayOpsWdkError("invalid_rpc_config", ...)` before network or wallet use.
 
 - [ ] **Step 4: Implement bounded fetch and JSON parsing**
 
@@ -204,10 +228,14 @@ For every request:
 1. Create `AbortSignal.timeout(requestTimeoutMs)`.
 2. Combine it with `options.signal` through `AbortSignal.any` when supplied.
 3. Pass `redirect: "error"` and the combined signal to fetch.
-4. Convert fetch/abort failures into `PayOpsWdkError("invalid_rpc_response", "Solana RPC request failed")`.
+4. Convert fetch/abort failures into
+   `PayOpsWdkError("invalid_rpc_response", "Solana RPC request failed")`.
 5. Reject a numeric `Content-Length` larger than `maxResponseBytes`.
-6. Read `response.text()`, reject when `new TextEncoder().encode(text).byteLength` exceeds the limit, and parse with `JSON.parse`.
-7. Retain all existing HTTP, JSON-RPC, result-shape, block-height, status, and signature validation.
+6. Read `response.text()`, reject when
+   `new TextEncoder().encode(text).byteLength` exceeds the limit, and parse with
+   `JSON.parse`.
+7. Retain all existing HTTP, JSON-RPC, result-shape, block-height, status, and
+   signature validation.
 
 - [ ] **Step 5: Run the focused RPC tests**
 
@@ -219,7 +247,8 @@ Expected: all RPC tests pass without unhandled abort or timer failures.
 
 Run: `pnpm check && pnpm package:verify && pnpm audit --prod`
 
-Expected: formatting, type checking, all tests, build, package contents, and dependency audit pass.
+Expected: formatting, type checking, all tests, build, package contents, and
+dependency audit pass.
 
 - [ ] **Step 7: Commit the transport hardening**
 
@@ -231,20 +260,24 @@ git commit -m "fix: bound Solana RPC transport"
 ### Task 3: Review and publish
 
 **Files:**
+
 - Review: `src/adapter.ts`
 - Review: `src/wdk-solana-rpc.ts`
 - Review: `test/adapter.test.ts`
 - Review: `test/wdk-solana-rpc.test.ts`
 
 **Interfaces:**
+
 - Consumes: completed Tasks 1 and 2.
 - Produces: a pushed `fix/wdk-rpc-hardening` branch and GitHub pull request.
 
 - [ ] **Step 1: Confirm the branch diff contains only the approved scope**
 
-Run: `git diff --check origin/main...HEAD && git diff --stat origin/main...HEAD && git status --short`
+Run:
+`git diff --check origin/main...HEAD && git diff --stat origin/main...HEAD && git status --short`
 
-Expected: no whitespace errors, only spec/plan plus adapter and RPC hardening files, and a clean worktree.
+Expected: no whitespace errors, only spec/plan plus adapter and RPC hardening
+files, and a clean worktree.
 
 - [ ] **Step 2: Push and create the PR**
 
