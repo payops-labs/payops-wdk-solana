@@ -86,6 +86,133 @@ describe("createWdkSolanaRpc", () => {
         params: [[SIGNATURE], { searchTransactionHistory: true }],
       },
     ]);
+    expect(
+      fetchMock.mock.calls.every(
+        ([, init]) =>
+          init?.redirect === "error" && init.signal instanceof AbortSignal,
+      ),
+    ).toBe(true);
+  });
+
+  it("normalizes caller cancellation as an RPC response error", async () => {
+    const controller = new AbortController();
+    const rpc = createWdkSolanaRpc({
+      account: { sendTransaction: vi.fn() },
+      fetch: vi.fn(async (_url, init) => {
+        controller.abort();
+        if (!init?.signal?.aborted) {
+          throw new Error("fetch did not receive caller cancellation");
+        }
+        throw init.signal.reason;
+      }),
+      rpcUrl: "https://rpc.example.test",
+      signal: controller.signal,
+    });
+
+    await expect(rpc.getBlockHeight()).rejects.toEqual(
+      expect.objectContaining<Partial<PayOpsWdkError>>({
+        code: "invalid_rpc_response",
+      }),
+    );
+  });
+
+  it("times out a pending RPC request", async () => {
+    const rpc = createWdkSolanaRpc({
+      account: { sendTransaction: vi.fn() },
+      fetch: vi.fn(async (_url, init) => {
+        const signal = init?.signal;
+        if (!signal) {
+          throw new Error("fetch did not receive a timeout signal");
+        }
+        return await new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      }),
+      requestTimeoutMs: 1,
+      rpcUrl: "https://rpc.example.test",
+    });
+
+    await expect(rpc.getBlockHeight()).rejects.toEqual(
+      expect.objectContaining<Partial<PayOpsWdkError>>({
+        code: "invalid_rpc_response",
+      }),
+    );
+  });
+
+  it("rejects a declared response larger than the configured limit", async () => {
+    const rpc = createWdkSolanaRpc({
+      account: { sendTransaction: vi.fn() },
+      fetch: vi.fn(
+        async () =>
+          new Response(JSON.stringify({ id: 1, jsonrpc: "2.0", result: 1 }), {
+            headers: { "content-length": "101" },
+            status: 200,
+          }),
+      ),
+      maxResponseBytes: 100,
+      rpcUrl: "https://rpc.example.test",
+    });
+
+    await expect(rpc.getBlockHeight()).rejects.toEqual(
+      expect.objectContaining<Partial<PayOpsWdkError>>({
+        code: "invalid_rpc_response",
+      }),
+    );
+  });
+
+  it("rejects an actual response larger than the configured limit", async () => {
+    const rpc = createWdkSolanaRpc({
+      account: { sendTransaction: vi.fn() },
+      fetch: vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              id: 1,
+              jsonrpc: "2.0",
+              padding: "x".repeat(100),
+              result: 1,
+            }),
+            { status: 200 },
+          ),
+      ),
+      maxResponseBytes: 64,
+      rpcUrl: "https://rpc.example.test",
+    });
+
+    await expect(rpc.getBlockHeight()).rejects.toEqual(
+      expect.objectContaining<Partial<PayOpsWdkError>>({
+        code: "invalid_rpc_response",
+      }),
+    );
+  });
+
+  it.each([
+    { maxResponseBytes: 0 },
+    { maxResponseBytes: -1 },
+    { maxResponseBytes: 1.5 },
+    { maxResponseBytes: Number.MAX_SAFE_INTEGER + 1 },
+    { requestTimeoutMs: 0 },
+    { requestTimeoutMs: -1 },
+    { requestTimeoutMs: 1.5 },
+    { requestTimeoutMs: Number.MAX_SAFE_INTEGER + 1 },
+  ])("rejects invalid transport configuration %#", (transportOptions) => {
+    const fetchMock = vi.fn();
+
+    expect(() =>
+      createWdkSolanaRpc({
+        account: { sendTransaction: vi.fn() },
+        fetch: fetchMock,
+        rpcUrl: "https://rpc.example.test",
+        ...transportOptions,
+      }),
+    ).toThrow(
+      expect.objectContaining<Partial<PayOpsWdkError>>({
+        code: "invalid_rpc_config",
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("accepts the WDK Solana account submission surface without a cast", () => {
